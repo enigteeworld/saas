@@ -1,0 +1,48 @@
+# Changes in this build
+
+- Removed all `demoData` imports from the application and removed `src/lib/demoData.ts`.
+- Converted admin and employer data pages to query EnigteeWorld Supabase tables.
+- Tightened employee application document storage and database linkage.
+- Added private Storage access policies and employer/admin document access.
+- Added draft-first application submission so document upload failures can be cleaned up safely.
+- Added employer draft staffing-request support.
+- Added secure signed document downloads.
+
+Changed files:
+- `src/lib/storage.ts`
+- `src/lib/applicationDocuments.ts`
+- `src/pages/employee/EmployeeJobApplicationPage.tsx`
+- `src/pages/employee/EmployeeDocumentsPage.tsx`
+- `src/pages/employee/EmployeeOnboardingPage.tsx`
+- `src/pages/employee/EmployeeApplicationDetailsPage.tsx`
+- `src/pages/employee/EmployeeNotificationsPage.tsx`
+- `src/pages/employee/EmployeeInterviewsPage.tsx`
+- `src/pages/employee/EmployeePayrollPage.tsx`
+- `src/pages/employee/EmployeeEmploymentPage.tsx`
+- `src/pages/employee/EmployeeAttendancePage.tsx`
+- `src/pages/public/HomePage.tsx`
+- `src/pages/public/JobDetailsPage.tsx`
+- `src/pages/admin/AdminDocumentsPage.tsx`
+- `src/pages/admin/AdminApplicationDetailsPage.tsx`
+- `src/pages/admin/AdminApplicationsPage.tsx`
+- `src/pages/admin/AdminCandidatesPage.tsx`
+- `src/pages/admin/AdminEmployeesPage.tsx`
+- `src/pages/admin/AdminDeploymentsPage.tsx`
+- `src/pages/admin/AdminAttendancePage.tsx`
+- `src/pages/admin/AdminInvoicesPage.tsx`
+- `src/pages/admin/AdminPayrollPage.tsx`
+- `src/pages/admin/AdminInterviewsPage.tsx`
+- `src/pages/admin/AdminDashboardPage.tsx`
+- `src/pages/admin/AdminSettingsPage.tsx`
+- `src/pages/employer/EmployerEstablishmentsPage.tsx`
+- `src/pages/employer/EmployerNotificationsPage.tsx`
+- `src/pages/employer/EmployerAttendancePage.tsx`
+- `src/pages/employer/EmployerInvoicesPage.tsx`
+- `src/pages/employer/EmployerJobsPage.tsx`
+- `src/pages/employer/EmployerCandidatesPage.tsx`
+- `src/pages/employer/EmployerEmployeesPage.tsx`
+- `src/pages/employer/EmployerEmployeeDetailsPage.tsx`
+- `src/pages/employer/EmployerDashboardPage.tsx`
+- `src/pages/employer/EmployerProfilePage.tsx`
+- `supabase/document-upload-patch.sql`
+- `supabase/README-document-upload.md`

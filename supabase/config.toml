@@ -1,0 +1,10 @@
+project_id = "rkpkbpqxovcvqmqlumkx"
+
+[functions.paystack-initialize-wallet-funding]
+verify_jwt = false
+
+[functions.paystack-verify-wallet-funding]
+verify_jwt = false
+
+[functions.send-notification-emails]
+verify_jwt = true
