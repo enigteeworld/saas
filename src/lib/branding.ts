@@ -29,11 +29,13 @@ export async function loadBranding(force = false) {
   if (!force && brandingCache !== undefined) return brandingCache;
   if (!force && brandingPromise) return brandingPromise;
 
-  brandingPromise = supabase
-    .from('branding')
-    .select('id, logo_url, favicon_url, updated_at')
-    .eq('id', 'default')
-    .maybeSingle()
+  brandingPromise = Promise.resolve(
+    supabase
+      .from('branding')
+      .select('id, logo_url, favicon_url, updated_at')
+      .eq('id', 'default')
+      .maybeSingle()
+  )
     .then(({ data, error }) => {
       if (error) throw error;
       brandingCache = (data as BrandingSettings | null) ?? null;

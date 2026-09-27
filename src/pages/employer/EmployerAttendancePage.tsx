@@ -66,7 +66,7 @@ export default function EmployerAttendancePage() {
     }
     setEmployerId(employer.id);
 
-    const [estRes, pointRes, deployedRes, attendanceRes] = await Promise.all([
+    const [estRes, pointRes, deployedRes] = await Promise.all([
       supabase.from('establishments').select('id, name').eq('employer_id', employer.id).eq('is_active', true).order('name'),
       supabase.from('attendance_points').select('id, establishment_id, employer_id, name, qr_token, is_active, expires_at, created_at, establishments:establishment_id (name)').eq('employer_id', employer.id).order('created_at', { ascending: false }),
       supabase
@@ -74,16 +74,37 @@ export default function EmployerAttendancePage() {
         .select('id, employee_id, establishment_id, profiles:employee_id (full_name), establishments:establishment_id (name)')
         .eq('employer_id', employer.id)
         .in('status', ['active', 'pending_start', 'onboarding']),
-      supabase
-        .from('attendance_events')
-        .select('id, attendance_date, check_in_at, check_out_at, status, source, confirmation_status, profiles:employee_id (full_name), establishments:establishment_id (name)')
-        .in('establishment_id', (await supabase.from('establishments').select('id').eq('employer_id', employer.id)).data?.map((e) => e.id) ?? [])
-        .order('attendance_date', { ascending: false })
-        .order('check_in_at', { ascending: false })
-        .limit(200),
     ]);
 
+    if (estRes.error) {
+      setError(errorMessage(estRes.error, 'Unable to load your establishments.'));
+      setLoading(false);
+      return;
+    }
+
     setEstablishments((estRes.data ?? []) as Establishment[]);
+
+    // Use the establishments already loaded for this employer. The previous
+    // implementation performed a second, nested establishments query inside
+    // Promise.all; if that query returned no IDs, the attendance query became
+    // .in('establishment_id', []) and silently returned no pending requests.
+    const establishmentIds = (estRes.data ?? []).map((item) => item.id);
+
+    const attendanceRes = establishmentIds.length > 0
+      ? await supabase
+          .from('attendance_events')
+          .select('id, attendance_date, check_in_at, check_out_at, status, source, confirmation_status, profiles:employee_id (full_name), establishments:establishment_id (name)')
+          .in('establishment_id', establishmentIds)
+          .order('attendance_date', { ascending: false })
+          .order('check_in_at', { ascending: false })
+          .limit(200)
+      : { data: [], error: null };
+
+    if (attendanceRes.error) {
+      setError(errorMessage(attendanceRes.error, 'Unable to load attendance requests.'));
+      setLoading(false);
+      return;
+    }
     setEmployees(
       (deployedRes.data ?? []).map((item) => ({
         deployment_id: item.id,
