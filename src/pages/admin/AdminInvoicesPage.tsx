@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { CheckCircle2, Loader2, Settings2, Send, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2, Settings2, Send, XCircle } from 'lucide-react';
 import { formatCurrency } from '@/utils/format';
 import PageHeader from '@/components/shared/PageHeader';
 import DataTable from '@/components/shared/DataTable';
@@ -7,9 +7,10 @@ import type { Column } from '@/components/shared/DataTable';
 import StatusBadge from '@/components/shared/StatusBadge';
 import StatCard from '@/components/shared/StatCard';
 import { supabase } from '@/lib/supabase';
-import { confirmPayment, issueInvoice, setPlatformFee } from '@/lib/invoices';
+import { adminIssueCreditNote, adminResolveInvoiceDispute, confirmPayment, issueInvoice, refreshInvoiceOverdueStatuses, setPlatformFee } from '@/lib/invoices';
 import { flushEmailOutbox } from '@/lib/notifications';
 import { errorMessage } from '@/lib/errors';
+import { getReceiptUrl } from '@/lib/storage';
 
 type Row = {
   id: string;
@@ -21,10 +22,11 @@ type Row = {
   amount: number;
   status: string;
   dueDate: string | null;
+  credited: number;
 };
 
 type ItemRow = { id: string; description: string; kind: string; amount: number };
-type PaymentRow = { id: string; amount: number; reference: string; paidOn: string; status: string; note: string | null };
+type PaymentRow = { id: string; amount: number; reference: string; paidOn: string; status: string; note: string | null; receiptPath: string | null };
 
 export default function AdminInvoicesPage() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -39,13 +41,17 @@ export default function AdminInvoicesPage() {
   const [feeAmount, setFeeAmount] = useState('15000');
   const [feeEnabled, setFeeEnabled] = useState(true);
   const [currentFee, setCurrentFee] = useState<{ default_fee: number; is_enabled: boolean; effective_from: string } | null>(null);
+  const [creditAmount, setCreditAmount] = useState('');
+  const [creditReason, setCreditReason] = useState('');
+  const [disputes, setDisputes] = useState<Array<{ id: string; reason: string; details: string | null; status: string; resolution_note: string | null }>>([]);
 
   const load = useCallback(async () => {
     setError('');
+    await refreshInvoiceOverdueStatuses();
     const [invoicesRes, feeRes] = await Promise.all([
       supabase
         .from('invoices')
-        .select('id, invoice_number, period_start, period_end, subtotal, service_fee, total, status, due_date, employer_profiles:employer_id (business_name)')
+        .select('id, invoice_number, period_start, period_end, subtotal, service_fee, total, credited_amount, status, due_date, employer_profiles:employer_id (business_name)')
         .order('created_at', { ascending: false }),
       supabase.from('platform_fee_settings').select('default_fee, is_enabled, effective_from').lte('effective_from', new Date().toISOString().slice(0, 10)).order('effective_from', { ascending: false }).limit(1).maybeSingle(),
     ]);
@@ -65,6 +71,7 @@ export default function AdminInvoicesPage() {
             amount: Number(item.total ?? 0),
             status: item.status,
             dueDate: item.due_date,
+            credited: Number(item.credited_amount ?? 0),
           };
         }),
       );
@@ -89,11 +96,13 @@ export default function AdminInvoicesPage() {
         setPayments([]);
         return;
       }
-      const [itemsRes, paymentsRes] = await Promise.all([
+      const [itemsRes, paymentsRes, disputesRes] = await Promise.all([
         supabase.from('invoice_items').select('id, description, kind, total_amount').eq('invoice_id', selected).order('kind'),
-        supabase.from('invoice_payments').select('id, amount, payment_reference, paid_on, status, note').eq('invoice_id', selected).order('created_at', { ascending: false }),
+        supabase.from('invoice_payments').select('id, amount, payment_reference, paid_on, status, note, receipt_path').eq('invoice_id', selected).order('created_at', { ascending: false }),
+        supabase.from('invoice_disputes').select('id, reason, details, status, resolution_note').eq('invoice_id', selected).order('created_at', { ascending: false }),
       ]);
       setItems((itemsRes.data ?? []).map((item) => ({ id: item.id, description: item.description, kind: item.kind, amount: Number(item.total_amount) })));
+      setDisputes((disputesRes.data ?? []) as typeof disputes);
       setPayments(
         (paymentsRes.data ?? []).map((item) => ({
           id: item.id,
@@ -102,11 +111,21 @@ export default function AdminInvoicesPage() {
           paidOn: item.paid_on,
           status: item.status,
           note: item.note,
+          receiptPath: item.receipt_path,
         })),
       );
     }
     void loadDetail();
   }, [selected]);
+
+  async function viewReceipt(path: string) {
+    const { data, error: urlError } = await getReceiptUrl(path);
+    if (urlError || !data?.signedUrl) {
+      setError(errorMessage(urlError, 'Unable to open the receipt.'));
+      return;
+    }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  }
 
   function done(message: string) {
     setNotice(message);
@@ -130,6 +149,39 @@ export default function AdminInvoicesPage() {
     else {
       done(action === 'confirm' ? 'Payment confirmed - the invoice status was updated automatically.' : 'Payment marked as not confirmed.');
     }
+  }
+
+  async function handleCreditNote(event: FormEvent) {
+    event.preventDefault();
+    if (!selected) return;
+    const amount = Number(creditAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError('Enter a valid credit note amount.');
+      return;
+    }
+    if (!creditReason.trim()) {
+      setError('Enter a reason for the credit note.');
+      return;
+    }
+    setBusy('credit');
+    setError('');
+    const { error: creditError } = await adminIssueCreditNote(selected, amount, creditReason);
+    setBusy(null);
+    if (creditError) setError(creditError);
+    else {
+      setCreditAmount('');
+      setCreditReason('');
+      done('Credit note issued and applied to the invoice balance.');
+    }
+  }
+
+  async function handleDispute(disputeId: string, action: 'resolve' | 'reject') {
+    const resolutionNote = window.prompt(action === 'resolve' ? 'Resolution note (optional):' : 'Reason for rejecting this dispute (optional):', '') ?? '';
+    setBusy(`dispute-${disputeId}`);
+    const { error: disputeError } = await adminResolveInvoiceDispute(disputeId, action, resolutionNote);
+    setBusy(null);
+    if (disputeError) setError(disputeError);
+    else done(action === 'resolve' ? 'Invoice dispute resolved.' : 'Invoice dispute rejected.');
   }
 
   async function handleFeeUpdate(event: FormEvent) {
@@ -172,7 +224,7 @@ export default function AdminInvoicesPage() {
     },
   ];
 
-  const outstanding = rows.filter((row) => row.status !== 'paid' && row.status !== 'draft').reduce((total, row) => total + row.amount, 0);
+  const outstanding = rows.filter((row) => !['paid','credited','draft'].includes(row.status)).reduce((total, row) => total + Math.max(row.amount - row.credited, 0), 0);
   const collected = rows.filter((row) => row.status === 'paid').reduce((total, row) => total + row.amount, 0);
   const selectedRow = rows.find((row) => row.id === selected);
   const pendingPayments = payments.filter((payment) => payment.status === 'pending');
@@ -251,6 +303,11 @@ export default function AdminInvoicesPage() {
                 <div>
                   <strong>{formatCurrency(payment.amount)} - ref {payment.reference}</strong>
                   <p>Paid on {payment.paidOn}{payment.note ? ` · ${payment.note}` : ''}</p>
+                  {payment.receiptPath ? (
+                    <button className="table-link" type="button" onClick={() => void viewReceipt(payment.receiptPath as string)}>
+                      View receipt
+                    </button>
+                  ) : null}
                 </div>
                 {payment.status === 'pending' ? (
                   <div className="inline-actions">
@@ -268,6 +325,49 @@ export default function AdminInvoicesPage() {
             ))
           )}
           {pendingPayments.length === 0 && payments.length > 0 ? <p className="hint">All submitted payments have been reviewed.</p> : null}
+
+          {!['draft','paid','credited','cancelled','voided'].includes(selectedRow.status) ? (
+            <div className="section-gap">
+              <h2><AlertTriangle size={18} style={{ verticalAlign: '-3px' }} /> Credit note</h2>
+              <p className="hint">Use a credit note for corrections after an invoice has already been issued. It reduces the amount the employer owes without rewriting the original invoice.</p>
+              <form className="form" onSubmit={handleCreditNote}>
+                <div className="row-2">
+                  <label>
+                    Credit amount (NGN)
+                    <input type="number" min={0} value={creditAmount} onChange={(event) => setCreditAmount(event.target.value)} placeholder="15000" />
+                  </label>
+                  <label>
+                    Reason
+                    <input value={creditReason} onChange={(event) => setCreditReason(event.target.value)} placeholder="Correction / adjustment reason" />
+                  </label>
+                </div>
+                <button className="btn btn-secondary btn-sm" type="submit" disabled={busy === 'credit'}>
+                  {busy === 'credit' ? <Loader2 size={14} className="spin" /> : <AlertTriangle size={14} />} Issue credit note
+                </button>
+              </form>
+            </div>
+          ) : null}
+
+          {disputes.length > 0 ? (
+            <div className="section-gap">
+              <h2>Invoice disputes</h2>
+              {disputes.map((dispute) => (
+                <div className="list-row" key={dispute.id}>
+                  <div>
+                    <strong>{dispute.reason}</strong>
+                    <p>{dispute.details || 'No additional details.'}</p>
+                    {dispute.resolution_note ? <p>Resolution: {dispute.resolution_note}</p> : null}
+                  </div>
+                  {dispute.status === 'open' || dispute.status === 'under_review' ? (
+                    <div className="inline-actions">
+                      <button className="btn btn-primary btn-sm" type="button" disabled={Boolean(busy)} onClick={() => void handleDispute(dispute.id, 'resolve')}>Resolve</button>
+                      <button className="btn btn-danger btn-sm" type="button" disabled={Boolean(busy)} onClick={() => void handleDispute(dispute.id, 'reject')}>Reject</button>
+                    </div>
+                  ) : <StatusBadge status={dispute.status} />}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>

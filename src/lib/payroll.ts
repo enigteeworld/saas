@@ -2,12 +2,17 @@ import { supabase } from './supabase';
 import { errorMessage } from './errors';
 
 export async function runPayroll(periodStart: string, periodEnd: string, employerId?: string | null) {
-  const { data, error } = await supabase.rpc('admin_run_payroll', {
-    p_period_start: periodStart,
-    p_period_end: periodEnd,
-    p_employer_id: employerId ?? null,
-  });
-  return { data, error: error ? errorMessage(error, 'Unable to run payroll.') : null };
+  try {
+    const { data, error } = await supabase.rpc('admin_run_payroll', {
+      p_period_start: periodStart,
+      p_period_end: periodEnd,
+      p_employer_id: employerId ?? null,
+    });
+    return { data, error: error ? errorMessage(error, 'Unable to run payroll.') : null };
+  } catch (err) {
+    console.error('Payroll RPC transport error:', err);
+    return { data: null, error: errorMessage(err, 'EnigteeWorld could not connect to Supabase while running payroll. Check the connection and try again.') };
+  }
 }
 
 export async function approvePayroll(runId: string) {

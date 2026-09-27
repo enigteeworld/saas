@@ -6,6 +6,7 @@ import { isSupabaseConfigured, signIn } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import { homeForRole } from '@/routes/routeConfig';
 import type { UserRole } from '@/types';
+import { Logo } from '@/components/layouts/PublicLayout';
 
 const roles: UserRole[] = ['employee', 'employer'];
 
@@ -45,9 +46,7 @@ export default function LoginPage() {
   return (
     <div className="auth-shell">
       <div className="auth-brand">
-        <Link to="/" className="logo">
-          <span className="logo-mark">E</span>Enigtee<span className="logo-accent">World</span>
-        </Link>
+        <Logo />
         <p>Recruitment and workforce management.</p>
       </div>
 

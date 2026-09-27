@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import QRCode from 'qrcode';
 import { Loader2, Plus, QrCode as QrCodeIcon, RefreshCw } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
@@ -178,9 +179,12 @@ export default function AdminAttendancePage() {
   return (
     <section>
       <PageHeader eyebrow="Operations" title="Attendance" description="Attendance points and check-ins across every employer, captured through QR check-in." actions={
-        <button className="btn btn-secondary" type="button" onClick={() => setShowPoints((value) => !value)}>
-          {showPoints ? 'Hide attendance points' : 'Manage attendance points'}
-        </button>
+        <>
+          <Link className="btn btn-secondary" to="/admin/payroll">View payroll</Link>
+          <button className="btn btn-secondary" type="button" onClick={() => setShowPoints((value) => !value)}>
+            {showPoints ? 'Hide attendance points' : 'Manage attendance points'}
+          </button>
+        </>
       } />
       {error ? <div className="error-message">{error}</div> : null}
       {notice ? <p className="success-message" style={{ marginBottom: 16 }}>{notice}</p> : null}

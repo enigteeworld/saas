@@ -16,21 +16,22 @@ type Props = {
 
 export default function MobileBottomNav({ items, onMenu }: Props) {
   return (
-    <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+    <nav className="mobile-bottom-nav" aria-label="Mobile workspace navigation">
       {items.slice(0, 4).map(({ label, to, icon: Icon, end }) => (
         <NavLink
           key={to}
           to={to}
           end={end}
-          className={({ isActive }) =>
-            `mobile-bottom-item${isActive ? ' active' : ''}`
-          }
+          className={({ isActive }) => `mobile-bottom-item${isActive ? ' active' : ''}`}
         >
           <Icon size={20} strokeWidth={2.2} />
           <span>{label}</span>
         </NavLink>
       ))}
-      
+      <button className="mobile-bottom-item mobile-bottom-menu" type="button" onClick={onMenu} aria-label="Open menu">
+        <Menu size={20} strokeWidth={2.2} />
+        <span>Menu</span>
+      </button>
     </nav>
   );
 }

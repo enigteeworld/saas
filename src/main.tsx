@@ -1,18 +1,18 @@
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App';
+import { applyFavicon, loadBranding } from '@/lib/branding';
 
-const faviconSource =
+const fallbackFavicon =
   (import.meta.env.VITE_FAVICON_URL as string | undefined)?.trim() || '/favicon.png';
 
-const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-if (favicon) {
-  favicon.href = faviconSource;
-} else {
-  const link = document.createElement('link');
-  link.rel = 'icon';
-  link.href = faviconSource;
-  document.head.appendChild(link);
-}
+applyFavicon(fallbackFavicon);
+void loadBranding()
+  .then((branding) => {
+    applyFavicon(branding?.favicon_url || branding?.logo_url || fallbackFavicon);
+  })
+  .catch(() => {
+    applyFavicon(fallbackFavicon);
+  });
 
 createRoot(document.getElementById('root')!).render(<App />);

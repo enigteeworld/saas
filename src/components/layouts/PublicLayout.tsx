@@ -1,18 +1,48 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { ArrowRight, Menu, X } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { authPaths, homeForRole, publicPaths } from '@/routes/routeConfig';
+import { applyFavicon, loadBranding } from '@/lib/branding';
 
 export function Logo({ to = publicPaths.home }: { to?: string }) {
-  const logoSource =
-    (import.meta.env.VITE_LOGO_URL as string | undefined)?.trim() || '/logo.png';
-
+  const [logoSource, setLogoSource] = useState(
+    (import.meta.env.VITE_LOGO_URL as string | undefined)?.trim() || '/logo.png',
+  );
   const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    void loadBranding()
+      .then((branding) => {
+        if (!mounted) return;
+        const source = branding?.logo_url?.trim() || logoSource;
+        setLogoSource(source);
+        setImageFailed(false);
+        applyFavicon(branding?.favicon_url || branding?.logo_url);
+      })
+      .catch(() => {
+        // Keep the static fallback if the branding row cannot be read.
+      });
+
+    const refresh = () => {
+      void loadBranding(true).then((branding) => {
+        if (!mounted) return;
+        setLogoSource(branding?.logo_url?.trim() || (import.meta.env.VITE_LOGO_URL as string | undefined)?.trim() || '/logo.png');
+        setImageFailed(false);
+        applyFavicon(branding?.favicon_url || branding?.logo_url);
+      });
+    };
+    window.addEventListener('enigtee:branding-updated', refresh);
+    return () => {
+      mounted = false;
+      window.removeEventListener('enigtee:branding-updated', refresh);
+    };
+  }, []);
 
   return (
     <Link to={to} className="logo" aria-label="EnigteeWorld home">
-      {!imageFailed ? (
+      {!imageFailed && logoSource ? (
         <img
           src={logoSource}
           alt="EnigteeWorld"

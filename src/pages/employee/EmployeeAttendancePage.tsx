@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CheckCircle2, Clock, Loader2, LogIn, LogOut, QrCode } from 'lucide-react';
+import { CalendarClock, CheckCircle2, Clock, Loader2, LogIn, LogOut, QrCode } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import DataTable from '@/components/shared/DataTable';
 import type { Column } from '@/components/shared/DataTable';
 import StatusBadge from '@/components/shared/StatusBadge';
 import StatCard from '@/components/shared/StatCard';
 import { supabase } from '@/lib/supabase';
-import { scanAttendance } from '@/lib/attendance';
+import { checkoutAttendance, describeSchedule, getCurrentSchedule, scanAttendance, type EmploymentSchedule } from '@/lib/attendance';
 import { errorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -30,6 +30,7 @@ export default function EmployeeAttendancePage() {
   const [deploymentId, setDeploymentId] = useState<string | null>(null);
   const [establishmentName, setEstablishmentName] = useState('');
   const [openSession, setOpenSession] = useState(false);
+  const [schedule, setSchedule] = useState<EmploymentSchedule | null>(null);
   const [loading, setLoading] = useState(true);
   const [code, setCode] = useState(searchParams.get('code') ?? '');
   const [scanning, setScanning] = useState(false);
@@ -39,18 +40,27 @@ export default function EmployeeAttendancePage() {
   const load = useCallback(async () => {
     if (!user?.id) return;
 
-    const { data: deployment } = await supabase
+    const { data: deploymentRows } = await supabase
       .from('deployments')
-      .select('id, establishments:establishment_id (name)')
+      .select('id, status, establishments:establishment_id (name)')
       .eq('employee_id', user.id)
       .in('status', ['active', 'pending_start', 'onboarding'])
-      .order('status', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    // Prefer an 'active' deployment over pending_start/onboarding if the
+    // employee somehow has more than one at once - plain alphabetical status
+    // ordering doesn't put 'active' first, so pick it out explicitly.
+    const deployment = deploymentRows?.find((row) => row.status === 'active') ?? deploymentRows?.[0] ?? null;
 
     const est = Array.isArray(deployment?.establishments) ? deployment?.establishments[0] : deployment?.establishments;
     setDeploymentId(deployment?.id ?? null);
     setEstablishmentName(est?.name ?? '');
+
+    if (deployment?.id) {
+      const { data: scheduleData } = await getCurrentSchedule(deployment.id);
+      setSchedule(scheduleData);
+    }
 
     if (deployment) {
       const { data, error: queryError } = await supabase
@@ -91,16 +101,17 @@ export default function EmployeeAttendancePage() {
     setError('');
     setNotice('');
 
-    const { data, error: scanError } = await scanAttendance(code);
+    const result = openSession ? await checkoutAttendance(code) : await scanAttendance(code);
     setScanning(false);
 
-    if (scanError || !data) {
-      setError(scanError ?? 'Unable to record your attendance.');
+    if (result.error || !result.data) {
+      setError(result.error ?? (openSession ? 'Unable to check you out.' : 'Unable to record your attendance.'));
       return;
     }
 
+    const data = result.data;
     setNotice(
-      data.check_out_at
+      openSession || data.check_out_at
         ? 'Checked out. Thanks for your work today - your employer will confirm this session.'
         : 'Checked in. Your employer will confirm this session shortly.',
     );
@@ -173,6 +184,12 @@ export default function EmployeeAttendancePage() {
               </form>
             </>
           )}
+        </div>
+
+        <div className="content-card">
+          <h2><CalendarClock size={19} style={{ verticalAlign: '-3px' }} /> Your approved work schedule</h2>
+          <p className={schedule ? '' : 'muted'}>{describeSchedule(schedule)}</p>
+          {schedule?.notes ? <p className="hint">{schedule.notes}</p> : null}
         </div>
 
         <div className="content-card">

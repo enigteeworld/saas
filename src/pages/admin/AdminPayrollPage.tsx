@@ -292,7 +292,12 @@ export default function AdminPayrollPage() {
 
   return (
     <section>
-      <PageHeader eyebrow="Finance" title="Payroll" description="Run payroll from confirmed attendance and approved adjustments, then approve, lock and invoice." />
+      <PageHeader
+        eyebrow="Finance"
+        title="Payroll"
+        description="Run payroll from confirmed attendance and approved adjustments, then approve, lock and invoice."
+        actions={<Link className="btn btn-secondary" to="/admin/attendance">View attendance</Link>}
+      />
 
       <div className="notice-card" style={{ marginBottom: 20 }}>
         <h3>Two separate payments happen here</h3>
@@ -314,7 +319,7 @@ export default function AdminPayrollPage() {
 
       <div className="content-card" style={{ marginBottom: 20 }}>
         <h2><PlayCircle size={19} style={{ verticalAlign: '-3px' }} /> Run payroll</h2>
-        <p className="hint">Uses each active deployment's own agreed rate and pay basis, plus confirmed attendance and approved adjustments for the period - never the original job-opening salary.</p>
+        <p className="hint">Uses each active deployment's own agreed rate and pay basis, plus confirmed attendance and approved adjustments for the period - never the original job-opening salary. Monthly salaries are not prorated by default. The EnigteeWorld platform fee is only added when the deployment covers the full payroll period; an employee who leaves before the period ends does not attract that month's platform fee.</p>
         <form className="form" onSubmit={handleRun}>
           <div className="row-2">
             <label>

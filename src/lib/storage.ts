@@ -114,3 +114,41 @@ export async function uploadAvatar(userId: string, file: File) {
   const { data } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(path);
   return { url: data.publicUrl, error: null };
 }
+
+// ---------------------------------------------------------------------------
+// Payment receipts - private bucket, one folder per employer user
+// (see payment-receipts-storage-patch.sql)
+// ---------------------------------------------------------------------------
+export const RECEIPT_BUCKET = 'payment-receipts';
+const MAX_RECEIPT_SIZE = 5 * 1024 * 1024;
+const ALLOWED_RECEIPT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
+export function validateReceipt(file: File) {
+  if (!ALLOWED_RECEIPT_TYPES.includes(file.type)) {
+    return 'Please upload a JPG, PNG, WEBP or PDF file.';
+  }
+  if (file.size > MAX_RECEIPT_SIZE) {
+    return 'File is too large. Please use a file under 5 MB.';
+  }
+  return null;
+}
+
+export async function uploadReceipt(userId: string, file: File) {
+  const validationError = validateReceipt(file);
+  if (validationError) return { path: null, error: new Error(validationError) };
+
+  const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const path = `${userId}/receipt-${Date.now()}.${extension}`;
+
+  const { error } = await supabase.storage.from(RECEIPT_BUCKET).upload(path, file, {
+    upsert: false,
+    contentType: file.type,
+    cacheControl: '3600',
+  });
+  if (error) return { path: null, error };
+  return { path, error: null };
+}
+
+export async function getReceiptUrl(path: string) {
+  return supabase.storage.from(RECEIPT_BUCKET).createSignedUrl(path, 300);
+}

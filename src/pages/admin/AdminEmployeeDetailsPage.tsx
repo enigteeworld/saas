@@ -11,6 +11,7 @@ import { formatCurrency } from '@/utils/format';
 import { supabase } from '@/lib/supabase';
 import { getApplicationDocumentUrl } from '@/lib/applicationDocuments';
 import { errorMessage } from '@/lib/errors';
+import WorkScheduleEditor from '@/components/shared/WorkScheduleEditor';
 
 type Employee = {
   id: string;
@@ -257,6 +258,8 @@ export default function AdminEmployeeDetailsPage() {
                 <p className="muted">This employee has not added payout details to their profile yet.</p>
               )}
             </div>
+
+            <WorkScheduleEditor deploymentId={employee.id} />
           </div>
 
           <div className="content-card">

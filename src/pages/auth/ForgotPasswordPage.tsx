@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { isSupabaseConfigured, resetPassword } from '@/lib/supabase';
+import { Logo } from '@/components/layouts/PublicLayout';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -12,7 +13,7 @@ export default function ForgotPasswordPage() {
     event.preventDefault();
 
     if (!isSupabaseConfigured) {
-      setMessage('Demo mode: a reset link would be sent to this address once email is configured.');
+      setMessage('Supabase is not configured. Add the EnigteeWorld environment variables before requesting a reset link.');
       return;
     }
 
@@ -25,9 +26,7 @@ export default function ForgotPasswordPage() {
   return (
     <div className="auth-shell">
       <div className="auth-brand">
-        <Link to="/" className="logo">
-          <span className="logo-mark">E</span>Enigtee<span className="logo-accent">World</span>
-        </Link>
+        <Logo />
       </div>
 
       <div className="auth-card">

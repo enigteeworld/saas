@@ -10,6 +10,7 @@ import type { Column } from '@/components/shared/DataTable';
 import { supabase } from '@/lib/supabase';
 import { getApplicationDocumentUrl } from '@/lib/applicationDocuments';
 import { proposeAdjustment } from '@/lib/payroll';
+import WorkScheduleEditor from '@/components/shared/WorkScheduleEditor';
 
 type Employee = {
   id: string;
@@ -251,6 +252,8 @@ export default function EmployerEmployeeDetailsPage() {
                 <div><dt>State / LGA</dt><dd>{[employee.state, employee.lga].filter(Boolean).join(' / ') || 'Not provided'}</dd></div>
               </dl>
             </div>
+
+            <WorkScheduleEditor deploymentId={employee.id} />
 
             <div className="content-card">
               <h2><Receipt size={19} style={{ verticalAlign: '-3px' }} /> Payroll adjustment</h2>

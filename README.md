@@ -10,9 +10,8 @@ npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env` and fill in your Supabase credentials. **If Supabase is not
-configured the app runs in demo mode**: the login page lets you pick a role and opens that
-workspace with sample data (stored in `localStorage`).
+Copy `.env.example` to `.env` and fill in your Supabase credentials. Production data is stored in
+Supabase; the app does not use a local demo-data mode.
 
 ## Project structure
 
@@ -34,7 +33,7 @@ src/
 │   ├── RoleRoute.tsx           # Auth + role guard
 │   └── routeConfig.ts          # Path constants and per-role sidebar navigation
 ├── stores/                     # zustand auth store (Supabase + demo mode)
-├── lib/                        # supabase client, demo data, utils
+├── lib/                        # Supabase client, storage, payroll, attendance, invoices, utils
 ├── hooks/
 ├── types/
 └── utils/
@@ -52,20 +51,6 @@ converted to lazy routes without touching the rest of the app.
 | Employee | `/employee/dashboard`, `onboarding`, `profile`, `applications`, `applications/:id`, `interviews`, `documents`, `employment`, `attendance`, `payroll`, `notifications` |
 | Employer | `/employer/dashboard`, `profile`, `establishments`, `jobs`, `candidates`, `employees`, `employees/:id`, `attendance`, `invoices`, `notifications` |
 | Admin | `/admin/dashboard`, `jobs`, `jobs/new`, `applications`, `applications/:id`, `interviews`, `candidates`, `employers`, `establishments`, `employees`, `deployments`, `attendance`, `payroll`, `invoices`, `documents`, `settings` |
-
-## Data
-
-Page content currently comes from `src/lib/demoData.ts` so every screen renders with realistic
-records. Replace those imports with Supabase queries to go live — the table, badge and stat
-components already accept the shapes defined in `src/types/index.ts`.
-
-
-## Update notes
-- Employee profile now saves personal, address and bank payout fields to Supabase.
-- Added storage helper for employee documents.
-- Added `supabase/employee-profile-patch.sql` for missing profile fields.
-- Login no longer exposes the admin role.
-- Added visual refresh styles.
 
 ## Workflow patch (recruitment → employment → employer workforce)
 
@@ -206,3 +191,77 @@ phone's native camera app, no camera-permission code in the app itself).
 ## Branding
 
 Place your own `logo.png` and `favicon.png` in `public/`, or set `VITE_LOGO_URL` and `VITE_FAVICON_URL` in `.env`. The app uses the image logo when available and falls back to the text mark if the logo cannot load.
+
+## Round 3: check-in/out reliability, work schedules, payout account, password reset
+
+Run **`supabase/attendance-payroll-invoice-fix.sql` again** (it's grown - safe
+to re-run, each block is idempotent) and, new this round, **`supabase/payment-receipts-storage-patch.sql`**
+(creates a private `payment-receipts` bucket, same pattern as `employee-documents`).
+
+### What changed
+- **Attendance check-in/out bug** - a second scan was creating a duplicate check-in
+  instead of closing the first one out. Root cause: the "is there an open session"
+  lookup only matched *today's* date, and the database's server-side "today" can
+  disagree with Africa/Lagos around midnight. Fixed by matching on "any open
+  session for this deployment" regardless of date, which is also just more
+  correct (it now closes out a forgotten check-out from a prior day too).
+- **Employee's own Attendance tab showing nothing** - a real bug: the deployment
+  lookup sorted candidates alphabetically by status (`.order('status', {ascending:false})`),
+  which does *not* actually prioritise `'active'` - if an employee ever has more
+  than one qualifying deployment row, it could silently pick the wrong one and
+  then query attendance for a deployment that has none. Fixed to explicitly
+  prefer `'active'`.
+- **Auto present/late detection** - confirming a QR check-in now compares the
+  check-in time against the deployment's active work schedule (if one is set)
+  and classifies it present or late automatically; the reviewer can still type
+  an explicit override.
+- **Work schedules** - new shared `WorkScheduleEditor` component. Employers set
+  it from an employee's detail page (their own establishments); admin can set
+  it too (`AdminEmployeeDetailsPage`), for when the employer discloses the
+  schedule to admin instead of entering it themselves. The employee sees it
+  read-only on their Attendance page. Every save is versioned (closes the old
+  row, inserts a new one) so it never rewrites historical payroll.
+- **Platform fee: full month only** - the fee line on an invoice is now only
+  added for a deployment that covered the *entire* payroll period (no
+  mid-period start, no mid-period departure). Someone who leaves before the
+  month is up still gets billed for salary earned, just not the platform fee.
+- **Company payout account** - Admin → Settings has a new "Company payout
+  account" card (bank name / account number / account name / instructions).
+  It's shown to the employer right on the Invoices page next to the "Submit a
+  payment" form.
+- **Payment receipts** - the employer's payment form now has an optional file
+  upload (image or PDF); admin sees a "View receipt" link on each submitted
+  payment (`payment-receipts` bucket, private, signed URLs only).
+- **Password reset was actually broken** - `resetPasswordForEmail` had no
+  `redirectTo`, and there was no page anywhere to complete a reset after
+  clicking the email link. Added `ResetPasswordPage` at `/reset-password` and
+  wired the redirect. **You must also add `<your-app-url>/reset-password` to
+  Supabase → Authentication → URL Configuration → Redirect URLs**, or Supabase
+  will reject the custom redirect and fall back to the default Site URL.
+
+## Production data policy
+
+The production build is Supabase-first. Application, employee, employer, attendance,
+payroll and invoice records are read from Supabase; do not seed demo records or use
+localStorage as a production data source.
+
+## Production-stage final patch
+
+After the existing schema, workflow, attendance/payroll/invoice and profile-visibility
+patches, run:
+
+`supabase/production-stage-final-patch.sql`
+
+This adds the production fixes for QR checkout, QR regeneration, automatic late
+classification, full-period-only platform fees, invoice overdue refresh, credit notes,
+invoice disputes and platform branding.
+
+Branding is managed from **Admin → Settings → Platform branding**. Upload the logo and
+favicon there; they are stored in Supabase and applied across the public site and workspaces.
+
+For local development:
+
+```bash
+npm install
+npm run dev
+```

@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { MailCheck } from 'lucide-react';
+import { Logo } from '@/components/layouts/PublicLayout';
 
 export default function VerifyEmailPage() {
   const location = useLocation();
@@ -8,9 +9,7 @@ export default function VerifyEmailPage() {
   return (
     <div className="auth-shell">
       <div className="auth-brand">
-        <Link to="/" className="logo">
-          <span className="logo-mark">E</span>Enigtee<span className="logo-accent">World</span>
-        </Link>
+        <Logo />
       </div>
 
       <div className="auth-card">
