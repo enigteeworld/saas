@@ -58,6 +58,7 @@ import AdminApplicationDetailsPage from '@/pages/admin/AdminApplicationDetailsPa
 import AdminInterviewsPage from '@/pages/admin/AdminInterviewsPage';
 import AdminCandidatesPage from '@/pages/admin/AdminCandidatesPage';
 import AdminEmployersPage from '@/pages/admin/AdminEmployersPage';
+import AdminEmployerDetailsPage from '@/pages/admin/AdminEmployerDetailsPage';
 import AdminCreateEmployers from '@/pages/admin/AdminCreateEmployers';
 import AdminEstablishmentsPage from '@/pages/admin/AdminEstablishmentsPage';
 import AdminEmployeesPage from '@/pages/admin/AdminEmployeesPage';
@@ -348,6 +349,11 @@ export function AppRoutes() {
           <Route
             path="employers"
             element={<AdminEmployersPage />}
+          />
+
+          <Route
+            path="employers/:id"
+            element={<AdminEmployerDetailsPage />}
           />
 
           <Route

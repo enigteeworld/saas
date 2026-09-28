@@ -28,10 +28,7 @@ export default function MobileBottomNav({ items, onMenu }: Props) {
           <span>{label}</span>
         </NavLink>
       ))}
-      <button className="mobile-bottom-item mobile-bottom-menu" type="button" onClick={onMenu} aria-label="Open menu">
-        <Menu size={20} strokeWidth={2.2} />
-        <span>Menu</span>
-      </button>
+     
     </nav>
   );
 }

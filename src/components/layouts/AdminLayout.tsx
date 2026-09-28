@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { adminWorkspace, publicPaths } from '@/routes/routeConfig';
 import { Logo } from './PublicLayout';
 import NotificationBell from '@/components/shared/NotificationBell';
+import PortalHeaderTitle from './PortalHeaderTitle';
 import MobileBottomNav from '@/components/shared/MobileBottomNav';
 
 export function AdminLayout() {
@@ -59,7 +60,7 @@ export function AdminLayout() {
       <main className="portal-main">
         <div className="portal-header">
           <button className="mobile-menu" aria-label="Open menu" onClick={() => setOpen(true)}><Menu /></button>
-          <div><h1>{config.label}</h1><p>Recruitment, deployment and workforce operations.</p></div>
+          <PortalHeaderTitle role="Admin" nav={config.nav} />
           <div className="portal-tools"><NotificationBell to="/admin/notifications" /><Link to={publicPaths.home} className="muted">Public site</Link></div>
         </div>
         <div className="portal-content"><Outlet /></div>

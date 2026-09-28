@@ -1,14 +1,28 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CalendarClock, CheckCircle2, Clock, Loader2, LogIn, LogOut, QrCode } from 'lucide-react';
+import {
+  CalendarClock,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  LogIn,
+  LogOut,
+  QrCode,
+} from 'lucide-react';
+
 import PageHeader from '@/components/shared/PageHeader';
 import DataTable from '@/components/shared/DataTable';
 import type { Column } from '@/components/shared/DataTable';
 import StatusBadge from '@/components/shared/StatusBadge';
 import StatCard from '@/components/shared/StatCard';
 import { supabase } from '@/lib/supabase';
-import { checkoutAttendance, describeSchedule, getCurrentSchedule, scanAttendance, type EmploymentSchedule } from '@/lib/attendance';
-import { errorMessage } from '@/lib/errors';
+import {
+  checkoutAttendance,
+  describeSchedule,
+  getCurrentSchedule,
+  scanAttendance,
+  type EmploymentSchedule,
+} from '@/lib/attendance';
 import { useAuthStore } from '@/stores/authStore';
 
 type Row = {
@@ -21,11 +35,26 @@ type Row = {
   method: string;
 };
 
-const methodLabel: Record<string, string> = { qr: 'QR scan', employer_manual: 'Marked by employer', admin_manual: 'Marked by admin' };
+type AttendanceRecord = {
+  id: string;
+  attendance_date: string;
+  check_in_at: string | null;
+  check_out_at: string | null;
+  status: string;
+  confirmation_status: string;
+  source: string;
+};
+
+const methodLabel: Record<string, string> = {
+  qr: 'QR scan',
+  employer_manual: 'Marked by employer',
+  admin_manual: 'Marked by admin',
+};
 
 export default function EmployeeAttendancePage() {
   const user = useAuthStore((state) => state.user);
   const [searchParams, setSearchParams] = useSearchParams();
+
   const [rows, setRows] = useState<Row[]>([]);
   const [deploymentId, setDeploymentId] = useState<string | null>(null);
   const [establishmentName, setEstablishmentName] = useState('');
@@ -38,9 +67,14 @@ export default function EmployeeAttendancePage() {
   const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
 
-    const { data: deploymentRows } = await supabase
+    setLoading(true);
+
+    const { data: deploymentRows, error: deploymentError } = await supabase
       .from('deployments')
       .select('id, status, establishments:establishment_id (name)')
       .eq('employee_id', user.id)
@@ -48,45 +82,106 @@ export default function EmployeeAttendancePage() {
       .order('created_at', { ascending: false })
       .limit(20);
 
-    // Prefer an 'active' deployment over pending_start/onboarding if the
-    // employee somehow has more than one at once - plain alphabetical status
-    // ordering doesn't put 'active' first, so pick it out explicitly.
-    const deployment = deploymentRows?.find((row) => row.status === 'active') ?? deploymentRows?.[0] ?? null;
+    if (deploymentError) {
+      console.error('Unable to load deployment:', deploymentError);
+      setLoading(false);
+      return;
+    }
 
-    const est = Array.isArray(deployment?.establishments) ? deployment?.establishments[0] : deployment?.establishments;
+    // Prefer an active deployment over pending_start/onboarding.
+    const deployment =
+      deploymentRows?.find((row) => row.status === 'active') ??
+      deploymentRows?.[0] ??
+      null;
+
+    const est = Array.isArray(deployment?.establishments)
+      ? deployment?.establishments[0]
+      : deployment?.establishments;
+
     setDeploymentId(deployment?.id ?? null);
     setEstablishmentName(est?.name ?? '');
 
-    if (deployment?.id) {
-      const { data: scheduleData } = await getCurrentSchedule(deployment.id);
-      setSchedule(scheduleData);
+    if (!deployment?.id) {
+      setSchedule(null);
+      setRows([]);
+      setOpenSession(false);
+      setLoading(false);
+      return;
     }
 
-    if (deployment) {
-      const { data, error: queryError } = await supabase
-        .from('attendance_events')
-        .select('id, attendance_date, check_in_at, check_out_at, status, confirmation_status, source')
-        .eq('employee_id', user.id)
-        .eq('deployment_id', deployment.id)
-        .order('attendance_date', { ascending: false })
-        .order('check_in_at', { ascending: false });
+    const { data: scheduleData, error: scheduleError } =
+      await getCurrentSchedule(deployment.id);
 
-      if (queryError) {
-        console.error(queryError);
-      } else {
-        const mapped = (data ?? []).map((item) => ({
-          id: item.id,
-          date: new Date(item.attendance_date).toLocaleDateString('en-NG'),
-          checkIn: item.check_in_at ? new Date(item.check_in_at).toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' }) : '—',
-          checkOut: item.check_out_at ? new Date(item.check_out_at).toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' }) : '—',
-          status: item.status,
-          confirmation: item.confirmation_status,
-          method: methodLabel[item.source] ?? item.source,
-        }));
-        setRows(mapped);
-        setOpenSession((data ?? []).some((item) => item.check_in_at && !item.check_out_at));
-      }
+    if (scheduleError) {
+      console.error('Unable to load schedule:', scheduleError);
     }
+
+    setSchedule(scheduleData);
+
+    const { data, error: queryError } = await supabase
+      .from('attendance_events')
+      .select(
+        'id, attendance_date, check_in_at, check_out_at, status, confirmation_status, source',
+      )
+      .eq('employee_id', user.id)
+      .eq('deployment_id', deployment.id)
+      .order('attendance_date', { ascending: false })
+      .order('check_in_at', { ascending: false });
+
+    if (queryError) {
+      console.error('Unable to load attendance:', queryError);
+      setRows([]);
+      setOpenSession(false);
+      setLoading(false);
+      return;
+    }
+
+    const attendanceData = (data ?? []) as AttendanceRecord[];
+
+    const mapped: Row[] = attendanceData.map((item) => ({
+      id: item.id,
+      date: new Date(item.attendance_date).toLocaleDateString('en-NG'),
+      checkIn: item.check_in_at
+        ? new Date(item.check_in_at).toLocaleTimeString('en-NG', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '—',
+      checkOut: item.check_out_at
+        ? new Date(item.check_out_at).toLocaleTimeString('en-NG', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '—',
+      status: item.status,
+      confirmation: item.confirmation_status,
+      method: methodLabel[item.source] ?? item.source,
+    }));
+
+    setRows(mapped);
+
+    /*
+     * IMPORTANT:
+     * Only the most recent attendance record determines whether
+     * the employee is currently checked in.
+     *
+     * Open session:
+     *   check_in_at exists AND check_out_at does not exist.
+     *
+     * Closed session:
+     *   check_in_at exists AND check_out_at exists.
+     *
+     * We intentionally do NOT use .some() across all records because
+     * an older incomplete record must not force the employee into
+     * "Check out" mode after a newer session has already been closed.
+     */
+    const latestRecord = attendanceData[0];
+
+    const hasOpenLatestSession =
+      Boolean(latestRecord?.check_in_at) &&
+      !latestRecord?.check_out_at;
+
+    setOpenSession(hasOpenLatestSession);
     setLoading(false);
   }, [user?.id]);
 
@@ -96,89 +191,214 @@ export default function EmployeeAttendancePage() {
 
   async function submitCode(event?: FormEvent) {
     event?.preventDefault();
+
     if (!code.trim()) return;
+
     setScanning(true);
     setError('');
     setNotice('');
 
-    const result = openSession ? await checkoutAttendance(code) : await scanAttendance(code);
+    const result = openSession
+      ? await checkoutAttendance(code.trim())
+      : await scanAttendance(code.trim());
+
     setScanning(false);
 
     if (result.error || !result.data) {
-      setError(result.error ?? (openSession ? 'Unable to check you out.' : 'Unable to record your attendance.'));
+      setError(
+        result.error ??
+          (openSession
+            ? 'Unable to check you out.'
+            : 'Unable to record your attendance.'),
+      );
       return;
     }
 
     const data = result.data;
-    setNotice(
-      openSession || data.check_out_at
-        ? 'Checked out. Thanks for your work today - your employer will confirm this session.'
-        : 'Checked in. Your employer will confirm this session shortly.',
-    );
+
+    if (openSession || data.check_out_at) {
+      setNotice(
+        'Checked out successfully. Your employer will confirm this session.',
+      );
+    } else {
+      setNotice(
+        'Checked in successfully. Your employer will confirm this session.',
+      );
+    }
+
     setCode('');
+
     if (searchParams.get('code')) {
       searchParams.delete('code');
       setSearchParams(searchParams, { replace: true });
     }
+
+    /*
+     * Reload the attendance records immediately after the action.
+     * This recalculates openSession from the newest database record,
+     * so:
+     *
+     * Check in  -> button becomes "Check out"
+     * Check out -> button becomes "Check in"
+     */
     await load();
   }
 
   const columns: Column<Row>[] = [
-    { key: 'date', header: 'Date' },
-    { key: 'checkIn', header: 'Check in' },
-    { key: 'checkOut', header: 'Check out' },
-    { key: 'method', header: 'Method' },
-    { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
-    { key: 'confirmation', header: 'Confirmation', render: (row) => <StatusBadge status={row.confirmation} /> },
+    {
+      key: 'date',
+      header: 'Date',
+    },
+    {
+      key: 'checkIn',
+      header: 'Check in',
+    },
+    {
+      key: 'checkOut',
+      header: 'Check out',
+    },
+    {
+      key: 'method',
+      header: 'Method',
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => <StatusBadge status={row.status} />,
+    },
+    {
+      key: 'confirmation',
+      header: 'Confirmation',
+      render: (row) => <StatusBadge status={row.confirmation} />,
+    },
   ];
 
-  const today = new Date().toDateString();
-  const todayRows = rows.filter((row) => row.date === new Date().toLocaleDateString('en-NG'));
-  void today;
+  const today = new Date().toLocaleDateString('en-NG');
+
+  const todayRows = rows.filter((row) => row.date === today);
 
   return (
     <section>
-      <PageHeader eyebrow="Attendance" title="Check in and history" description="Scan or enter your establishment's attendance code to check in and out." />
+      <PageHeader
+        eyebrow="Attendance"
+        title="Check in and history"
+        description="Scan or enter your establishment's attendance code to check in and out."
+      />
+
       <div className="stat-grid">
-        <StatCard label="Confirmed present" value={loading ? '—' : rows.filter((row) => row.confirmation === 'confirmed' && row.status === 'present').length} hint="This history" />
-        <StatCard label="Late arrivals" value={loading ? '—' : rows.filter((row) => row.status === 'late').length} hint="This history" />
-        <StatCard label="Pending confirmation" value={loading ? '—' : rows.filter((row) => row.confirmation === 'pending_confirmation').length} hint="Awaiting employer" />
-        <StatCard label="Today" value={loading ? '—' : todayRows.length ? todayRows[0].status : 'Not recorded'} hint="Current day" />
+        <StatCard
+          label="Confirmed present"
+          value={
+            loading
+              ? '—'
+              : rows.filter(
+                  (row) =>
+                    row.confirmation === 'confirmed' &&
+                    row.status === 'present',
+                ).length
+          }
+          hint="This history"
+        />
+
+        <StatCard
+          label="Late arrivals"
+          value={
+            loading
+              ? '—'
+              : rows.filter((row) => row.status === 'late').length
+          }
+          hint="This history"
+        />
+
+        <StatCard
+          label="Pending confirmation"
+          value={
+            loading
+              ? '—'
+              : rows.filter(
+                  (row) => row.confirmation === 'pending_confirmation',
+                ).length
+          }
+          hint="Awaiting employer"
+        />
+
+        <StatCard
+          label="Today"
+          value={
+            loading
+              ? '—'
+              : todayRows.length
+                ? todayRows[0].status
+                : 'Not recorded'
+          }
+          hint="Current day"
+        />
       </div>
 
       <div className="dashboard-grid">
         <div className="content-card">
           <h2>
-            <QrCode size={19} style={{ verticalAlign: '-3px' }} /> Check {openSession ? 'out' : 'in'}
+            <QrCode size={19} style={{ verticalAlign: '-3px' }} /> Check{' '}
+            {openSession ? 'out' : 'in'}
           </h2>
+
           {!deploymentId ? (
-            <p className="muted">You need an active deployment before you can check in.</p>
+            <p className="muted">
+              You need an active deployment before you can check in.
+            </p>
           ) : (
             <>
               <p className="muted">
-                Point your camera at the QR code displayed at <strong>{establishmentName || 'your establishment'}</strong>, or ask your
-                supervisor for the code and type it below.
+                Point your camera at the QR code displayed at{' '}
+                <strong>
+                  {establishmentName || 'your establishment'}
+                </strong>
+                , or ask your supervisor for the code and type it below.
               </p>
+
               <form className="form" onSubmit={submitCode}>
                 <label>
                   Attendance code
+
                   <input
                     value={code}
-                    onChange={(event) => setCode(event.target.value.toUpperCase())}
+                    onChange={(event) =>
+                      setCode(event.target.value.toUpperCase())
+                    }
                     placeholder="e.g. 4F2A91C7D0"
                     autoCapitalize="characters"
                     maxLength={10}
                   />
                 </label>
+
                 {error ? <p className="error">{error}</p> : null}
-                {notice ? <p className="success-message"><CheckCircle2 size={15} /> {notice}</p> : null}
-                <button className="btn btn-primary" type="submit" disabled={scanning || !code.trim()}>
+
+                {notice ? (
+                  <p className="success-message">
+                    <CheckCircle2 size={15} /> {notice}
+                  </p>
+                ) : null}
+
+                <button
+                  className="btn btn-primary"
+                  type="submit"
+                  disabled={scanning || !code.trim()}
+                >
                   {scanning ? (
-                    <><Loader2 size={16} className="spin" /> Recording...</>
+                    <>
+                      <Loader2 size={16} className="spin" />
+                      Recording...
+                    </>
                   ) : openSession ? (
-                    <><LogOut size={16} /> Check out</>
+                    <>
+                      <LogOut size={16} />
+                      Check out
+                    </>
                   ) : (
-                    <><LogIn size={16} /> Check in</>
+                    <>
+                      <LogIn size={16} />
+                      Check in
+                    </>
                   )}
                 </button>
               </form>
@@ -187,16 +407,34 @@ export default function EmployeeAttendancePage() {
         </div>
 
         <div className="content-card">
-          <h2><CalendarClock size={19} style={{ verticalAlign: '-3px' }} /> Your approved work schedule</h2>
-          <p className={schedule ? '' : 'muted'}>{describeSchedule(schedule)}</p>
-          {schedule?.notes ? <p className="hint">{schedule.notes}</p> : null}
+          <h2>
+            <CalendarClock
+              size={19}
+              style={{ verticalAlign: '-3px' }}
+            />{' '}
+            Your approved work schedule
+          </h2>
+
+          <p className={schedule ? '' : 'muted'}>
+            {describeSchedule(schedule)}
+          </p>
+
+          {schedule?.notes ? (
+            <p className="hint">{schedule.notes}</p>
+          ) : null}
         </div>
 
         <div className="content-card">
           <h2>
             <Clock size={19} style={{ verticalAlign: '-3px' }} /> Recent records
           </h2>
-          <DataTable columns={columns} rows={rows} emptyTitle="No attendance yet" emptyDescription="Your records appear after your first check-in." />
+
+          <DataTable
+            columns={columns}
+            rows={rows}
+            emptyTitle="No attendance yet"
+            emptyDescription="Your records appear after your first check-in."
+          />
         </div>
       </div>
     </section>

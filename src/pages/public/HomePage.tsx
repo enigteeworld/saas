@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, BriefcaseBusiness, Building2, CheckCircle2, MapPin, ShieldCheck, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { loadBranding } from '@/lib/branding';
 
 type FeaturedJob = {
   id: string;
@@ -34,6 +35,19 @@ function salary(job: FeaturedJob) {
 export default function HomePage() {
   const [jobs, setJobs] = useState<FeaturedJob[]>([]);
   const [jobCount, setJobCount] = useState(0);
+  const [brandImage, setBrandImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    void loadBranding()
+      .then((branding) => {
+        if (mounted) setBrandImage(branding?.favicon_url?.trim() || branding?.logo_url?.trim() || null);
+      })
+      .catch(() => undefined);
+    return () => {
+      mounted = false;
+    };
+  }, []);
   const [applicationCount, setApplicationCount] = useState(0);
   const [interviewCount, setInterviewCount] = useState(0);
 
@@ -88,7 +102,7 @@ export default function HomePage() {
           <div className="hero-panel">
             <div className="panel-top"><span className="status-dot" /> Live platform activity</div>
             <div className="candidate-card">
-              <div className="avatar">EW</div>
+              <div className="avatar brand-avatar">{brandImage ? <img src={brandImage} alt="" /> : <Building2 size={20} />}</div>
               <div>
                 <strong>EnigteeWorld workspace</strong>
                 <p>Recruitment, onboarding and workforce management</p>

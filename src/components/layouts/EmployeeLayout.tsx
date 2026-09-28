@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { employeeWorkspace, publicPaths } from '@/routes/routeConfig';
 import { Logo } from './PublicLayout';
 import NotificationBell from '@/components/shared/NotificationBell';
+import PortalHeaderTitle from './PortalHeaderTitle';
 import MobileBottomNav from '@/components/shared/MobileBottomNav';
 
 export function EmployeeLayout() {
@@ -75,10 +76,7 @@ export function EmployeeLayout() {
           <button className="mobile-menu" aria-label="Open menu" onClick={() => setOpen(true)}>
             <Menu />
           </button>
-          <div>
-            <h1>{config.label}</h1>
-            <p>Applications, interviews, onboarding and employment.</p>
-          </div>
+          <PortalHeaderTitle role="Employee" nav={config.nav} />
           <div className="portal-tools">
             <NotificationBell to="/employee/notifications" />
             <Link to={publicPaths.home} className="muted">Public site</Link>

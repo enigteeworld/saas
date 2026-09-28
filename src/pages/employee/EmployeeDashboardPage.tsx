@@ -383,6 +383,12 @@ export default function EmployeeDashboardPage() {
   );
 
   const [deploymentStatus, setDeploymentStatus] = useState<string | null>(null);
+  const [attendanceSummary, setAttendanceSummary] = useState<{
+    confirmed: number;
+    pending: number;
+    checkedIn: boolean;
+    total: number;
+  } | null>(null);
 
   useEffect(() => {
     async function loadDeployment() {
@@ -396,6 +402,23 @@ export default function EmployeeDashboardPage() {
         .limit(1)
         .maybeSingle();
       setDeploymentStatus(deployment?.status ?? null);
+
+      const { data: attendanceRows } = await supabase
+        .from('attendance_events')
+        .select('status, confirmation_status, check_in_at, check_out_at')
+        .eq('employee_id', user.id)
+        .order('attendance_date', { ascending: false })
+        .limit(120);
+
+      const rows = attendanceRows ?? [];
+      setAttendanceSummary({
+        total: rows.length,
+        confirmed: rows.filter(
+          (row) => row.confirmation_status === 'confirmed' && ['present', 'late'].includes(row.status),
+        ).length,
+        pending: rows.filter((row) => row.confirmation_status === 'pending_confirmation').length,
+        checkedIn: rows.some((row) => row.check_in_at && !row.check_out_at),
+      });
     }
     void loadDeployment();
   }, [user?.id]);
@@ -493,8 +516,22 @@ export default function EmployeeDashboardPage() {
 
         <StatCard
           label="Attendance"
-          value={loading ? '—' : attendance}
-          hint="Starts after deployment"
+          value={
+            loading
+              ? '—'
+              : attendanceSummary && attendanceSummary.total > 0
+                ? attendanceSummary.checkedIn
+                  ? 'Checked in'
+                  : `${attendanceSummary.confirmed} day${attendanceSummary.confirmed === 1 ? '' : 's'}`
+                : attendance
+          }
+          hint={
+            attendanceSummary && attendanceSummary.total > 0
+              ? attendanceSummary.pending > 0
+                ? `${attendanceSummary.pending} awaiting employer confirmation`
+                : 'Confirmed attendance'
+              : 'Starts after deployment'
+          }
           icon={QrCode}
         />
       </div>
